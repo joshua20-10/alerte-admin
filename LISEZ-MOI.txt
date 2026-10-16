@@ -1,0 +1,8 @@
+COMMENT OBTENIR L'APK
+1. Créez un dépôt GitHub (ex : alerte-admin) et envoyez-y TOUT le contenu de ce dossier
+   (le dossier caché .github compris). Si .github n'est pas pris en compte :
+   "Add file > Create new file", nom : .github/workflows/build.yml, puis collez le contenu de build.yml.copie
+2. Onglet Actions > "Build APK" > Run workflow (il se lance aussi à chaque envoi).
+3. Au bout de 4-6 min : cliquez sur l'exécution > Artifacts > AlerteAdmin-APK > téléchargez, dézippez.
+4. Copiez app-debug.apk sur le Samsung, ouvrez-le, autorisez "sources inconnues".
+5. Lancez l'app : acceptez les notifications et "Autoriser" l'exécution en arrière-plan.

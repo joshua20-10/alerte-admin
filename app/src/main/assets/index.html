@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Panneau Admin - Alertes & Historique</title>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: white; padding: 20px; max-width: 600px; margin: 0 auto; }
+    h1, h2 { color: #ff4d4d; text-align: center; }
+    h2 { border-bottom: 1px solid #333; padding-bottom: 8px; margin-top: 30px; }
+    .status-bar { background: #2a2a2a; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 20px; font-weight: bold; border: 2px solid #2ecc71; color: #2ecc71; }
+    .card { background: #1e1e1e; border: 2px solid #ff4d4d; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(255, 77, 77, 0.2); }
+    .card-histo { background: #181818; border: 1px solid #444; border-radius: 12px; padding: 15px; margin-bottom: 12px; opacity: 0.85; }
+    .nom { font-size: 20px; font-weight: bold; color: #ffffff; }
+    .tel { font-size: 18px; color: #2ecc71; margin: 6px 0; font-weight: bold; }
+    .ip { font-size: 13px; color: #3498db; margin-bottom: 6px; font-family: monospace; }
+    .details { color: #cccccc; margin: 8px 0; }
+    .date { font-size: 12px; color: #777; margin-bottom: 8px; }
+    .status-select { width: 100%; padding: 10px; margin: 10px 0; border-radius: 8px; background: #2a2a2a; color: #f1c40f; font-weight: bold; border: 1px solid #444; font-size: 15px; }
+    .actions { display: flex; gap: 10px; margin-top: 10px; }
+    .btn { flex: 1; text-align: center; padding: 12px; border-radius: 8px; font-weight: bold; text-decoration: none; color: white; cursor: pointer; border: none; }
+    .btn-tel { background: #2ecc71; }
+    .btn-gps { background: #3498db; }
+    .btn-close { background: #e74c3c; margin-top: 10px; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <h1>🚨 PANNEAU ADMIN</h1>
+  <div class="status-bar" id="status">🟢 ALARME ACTIVE & ÉCOUTE EN DIRECT</div>
+
+  <audio id="audioAlarme" src="alarme.mp3" preload="auto"></audio>
+
+  <h2>⚡ Alertes en cours</h2>
+  <div id="listeAlertes"></div>
+
+  <h2>📜 Historique des interventions</h2>
+  <div id="listeHistorique"></div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBSTEYmcCvZX6_TV0fhdhLy7imqMwWcKJU",
+      authDomain: "alertemedicale.firebaseapp.com",
+      databaseURL: "https://alertemedicale-default-rtdb.firebaseio.com",
+      projectId: "alertemedicale",
+      storageBucket: "alertemedicale.firebasestorage.app",
+      messagingSenderId: "1074615137742",
+      appId: "1:1074615137742:web:fe0be480c1b39c92b6e79f",
+      measurementId: "G-6PNNF7TYS9"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    let audioTimer = null;
+
+    // Échappe le texte pour éviter l'injection de HTML
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function nettoyerUrlMaps(url) {
+      if (!url) return "#";
+      if (/^https:\/\/(www\.)?(google\.[a-z.]+\/maps|maps\.google\.|maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(url)) {
+        return url;
+      }
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(url)}`;
+    }
+
+    function jouerSonAlarme() {
+      const audio = document.getElementById('audioAlarme');
+      audio.currentTime = 0;
+      if (audioTimer) clearTimeout(audioTimer);
+      audio.play().then(() => {
+        audioTimer = setTimeout(() => { audio.pause(); audio.currentTime = 0; }, 3000);
+      }).catch(e => console.log(e));
+    }
+
+    db.ref('alertes').on('child_added', (snapshot) => {
+      const key = snapshot.key;
+      const data = snapshot.val();
+
+      if (data.statut && data.statut.includes("terminée")) return;
+
+      jouerSonAlarme();
+
+      const container = document.getElementById('listeAlertes');
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = `card-${key}`;
+
+      const dateStr = new Date(data.timestamp).toLocaleString('fr-FR');
+      const mapUrlCorrige = esc(nettoyerUrlMaps(data.mapUrl));
+      const tel = esc(data.telephone);
+
+      card.innerHTML = `
+        <div class="nom">👤 ${esc(data.nom)}</div>
+        <div class="tel">📞 <a href="tel:${tel}" style="color:#2ecc71;">${tel}</a></div>
+        <div class="ip">🌐 IP : ${esc(data.ip || "Inconnue")}</div>
+        <div class="date">🕒 Date : ${esc(dateStr)}</div>
+        <div class="details">📝 Détails : ${esc(data.details)}</div>
+
+        <label style="font-size:12px; color:#aaa;">Changer le statut :</label>
+        <select class="status-select" onchange="mettreAJourStatut('${key}', this.value)">
+          <option value="Alerte prise en compte" ${data.statut === 'Alerte prise en compte' ? 'selected' : ''}>Alerte prise en compte</option>
+          <option value="En route" ${data.statut === 'En route' ? 'selected' : ''}>En route 🚗</option>
+          <option value="Recherche de la victime" ${data.statut === 'Recherche de la victime' ? 'selected' : ''}>Recherche de la victime 🔍</option>
+          <option value="Sur les lieux" ${data.statut === 'Sur les lieux' ? 'selected' : ''}>Sur les lieux 📍</option>
+          <option value="Prise en charge effectuée" ${data.statut === 'Prise en charge effectuée' ? 'selected' : ''}>Prise en charge effectuée 🚑</option>
+          <option value="Intervention terminée" ${data.statut === 'Intervention terminée' ? 'selected' : ''}>Intervention terminée ✅</option>
+        </select>
+
+        <div class="actions">
+          <a class="btn btn-tel" href="tel:${tel}">Appeler</a>
+          <a class="btn btn-gps" href="${mapUrlCorrige}" target="_blank" rel="noopener noreferrer">Google Maps</a>
+        </div>
+        <button class="btn btn-close" onclick="terminerIntervention('${key}')">Clôturer & Archiver</button>
+      `;
+
+      container.prepend(card);
+    });
+
+    db.ref('alertes').on('child_removed', (snapshot) => {
+      const card = document.getElementById(`card-${snapshot.key}`);
+      if (card) card.remove();
+    });
+
+    db.ref('historique').on('child_added', (snapshot) => {
+      const data = snapshot.val();
+      const container = document.getElementById('listeHistorique');
+      const card = document.createElement('div');
+      card.className = 'card-histo';
+
+      const dateStr = new Date(data.timestamp).toLocaleString('fr-FR');
+      const mapUrlCorrige = esc(nettoyerUrlMaps(data.mapUrl));
+
+      card.innerHTML = `
+        <div class="nom">👤 ${esc(data.nom)}</div>
+        <div class="tel">📞 ${esc(data.telephone)}</div>
+        <div class="ip">🌐 IP : ${esc(data.ip || "Inconnue")}</div>
+        <div class="date">🕒 ${esc(dateStr)}</div>
+        <div class="details">📝 ${esc(data.details)}</div>
+        <div style="color:#2ecc71; font-weight:bold; font-size:14px;">Statut final : ${esc(data.statut)}</div>
+        <a class="btn btn-gps" href="${mapUrlCorrige}" target="_blank" rel="noopener noreferrer" style="margin-top:8px; display:inline-block; font-size:12px; padding:6px 12px;">Position Maps</a>
+      `;
+
+      container.prepend(card);
+    });
+
+    function mettreAJourStatut(key, nouveauStatut) {
+      db.ref(`alertes/${key}`).update({ statut: nouveauStatut });
+    }
+
+    function terminerIntervention(key) {
+      db.ref(`alertes/${key}`).once('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          data.statut = "Intervention terminée ✅";
+          db.ref('historique').push(data).then(() => {
+            db.ref(`alertes/${key}`).remove();
+          });
+        }
+      });
+
+      const audio = document.getElementById('audioAlarme');
+      audio.pause();
+      audio.currentTime = 0;
+
+      const card = document.getElementById(`card-${key}`);
+      if (card) card.remove();
+    }
+  </script>
+</body>
+</html>
